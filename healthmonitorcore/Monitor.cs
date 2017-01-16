@@ -34,7 +34,7 @@ namespace healthmonitorcore
 
         protected UtilsHostsFile hostsUtils;
 
-        protected List<long> blacklist = new List<long>();
+        protected Dictionary<long, int> blacklist = new Dictionary<long, int>();
 
         public Monitor()
         {
@@ -94,7 +94,12 @@ namespace healthmonitorcore
             // Do not monitor blacklisted sites.
             // Blacklist clears during a monitor reset,
             // that happens every handful of hours.
-            if (blacklist.Contains(site.Id))
+            if (!blacklist.ContainsKey(site.Id)) {
+                blacklist.Add(site.Id, 0);
+            }
+            int blacklistcount = blacklist[site.Id];
+            // Do not monitor if blacklisted 3 times.
+            if (blacklistcount > 2)
             {
                 return;
             }
@@ -111,8 +116,9 @@ namespace healthmonitorcore
             if (!loaded)
             {
                 IISUtils.RestartSite(site.Id);
-                log.LogWarning(String.Format("Could not load site, restarted and blacklisted: {0}", site.Name));
-                blacklist.Add(site.Id);
+                log.LogWarning(String.Format("Could not load site, restarted and blacklisted: {0} with previous count {1}", site.Name, blacklistcount));
+                blacklistcount++;
+                blacklist[site.Id] = blacklistcount;
                 return;
             }
 
@@ -120,7 +126,7 @@ namespace healthmonitorcore
             if (response.StatusCode == HttpStatusCode.InternalServerError)
             {
                 IISUtils.RestartSite(site.Id);
-                log.LogWarning(String.Format("Unresponsive php (Internal Server Error) restarted website: {0}", site.Name));
+                log.LogError(String.Format("Unresponsive php (Internal Server Error) restarted website: {0}", site.Name));
                 return;
             }
 
@@ -142,7 +148,7 @@ namespace healthmonitorcore
             if (String.IsNullOrWhiteSpace(html) && response.ContentLength == 0)
             {
                 IISUtils.RestartSite(site.Id);
-                log.LogWarning(String.Format("Unresponsive php (Empty sample response) restarted website: {0}", site.Name));
+                log.LogError(String.Format("Unresponsive php (Empty sample response) restarted website: {0}", site.Name));
                 return;
             }
 
@@ -170,7 +176,7 @@ namespace healthmonitorcore
                 if (truncated.Contains(e))
                 {
                     IISUtils.RestartSite(site.Id);
-                    log.LogWarning(String.Format("Unresponsive php (Fatal error) restarted website: {0}", site.Name));
+                    log.LogError(String.Format("Unresponsive php (Fatal error) restarted website: {0}", site.Name));
                     return;
 
                 }
